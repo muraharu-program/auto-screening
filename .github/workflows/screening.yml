@@ -1,0 +1,53 @@
+name: Daily Stock Screening
+
+on:
+  schedule:
+    # JST 16:00 = UTC 07:00 (平日のみ)
+    - cron: '0 7 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  screening:
+    runs-on: ubuntu-latest
+    env:
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+      LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ハイブリッドスクリーニング + ニュースセンチメント分析
+      - name: Run hybrid screening with sentiment
+        run: python main.py --hybrid --sentiment
+
+      # モデル再学習は週 1 回（月曜）だけ — ハイブリッド学習に変更
+  retrain:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 7 * * 1'
+    env:
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+      LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Retrain hybrid model
+        run: python main.py --hybrid-train

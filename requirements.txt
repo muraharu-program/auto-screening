@@ -1,0 +1,12 @@
+yfinance
+lightgbm
+xgboost
+pandas
+numpy
+requests
+beautifulsoup4
+lxml
+joblib
+scikit-learn
+feedparser
+google-generativeai
