@@ -202,7 +202,7 @@ python main.py --screen
 | `SENTIMENT_TOP_N` | `30` | センチメント分析対象の上位銘柄数 |
 | `SENTIMENT_MIN_SCORE` | `4` | 最終通知に残す最低センチメントスコア |
 | `SENTIMENT_DEFAULT_SCORE` | `3` | ニュース取得失敗時のデフォルトスコア |
-| `SENTIMENT_API_SLEEP` | `2.0` | Gemini API コール間のスリープ（秒） |
+| `SENTIMENT_API_SLEEP` | `6.0` | Gemini API コール間のスリープ（秒。レート制限対応のため遅め） |
 | `NEWS_LOOKBACK_DAYS` | `7` | ニュース取得の遡り日数 |
 
 ---
@@ -332,7 +332,7 @@ export GEMINI_API_KEY="あなたのAPIキー"
 | `yfinance` でデータ取得失敗 | ネット接続を確認。時間を置いて再実行 |
 | LINE 通知が届かない | 環境変数、トークン、ユーザーIDを確認 |
 | モデル精度が低い | `config.py` の `TRAIN_PERIOD` を長くする、特徴量を追加 |
-| Gemini API エラー | `GEMINI_API_KEY` 環境変数を確認。Rate Limit の場合は `SENTIMENT_API_SLEEP` を増やす |
+| Gemini API エラー | `GEMINI_API_KEY` 環境変数を確認。Rate Limit の場合は `SENTIMENT_API_SLEEP` を増やす（デフォルトは6秒） |
 | センチメント分析で全銘柄が除外される | `SENTIMENT_MIN_SCORE` を 3 に下げる、または `--sentiment` なしで実行 |
 
 ---
