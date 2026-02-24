@@ -53,7 +53,7 @@ MIN_PROB = 0.5       # 最低上昇確率
 
 # ===== センチメント分析設定 =====
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = "gemini-1.5-flash"           # 使用する Gemini モデル名
+GEMINI_MODEL = "gemini-2.5-flash-lite"       # 使用する Gemini モデル名
 SENTIMENT_TOP_N = 30                         # センチメント分析対象の上位銘柄数
 SENTIMENT_MIN_SCORE = 4                      # 最終通知に残す最低センチメントスコア（1-5）
 SENTIMENT_DEFAULT_SCORE = 3                  # ニュース取得失敗時のデフォルトスコア
