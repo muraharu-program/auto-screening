@@ -10,3 +10,4 @@ joblib
 scikit-learn
 feedparser
 google-generativeai
+python-dotenv
