@@ -61,6 +61,7 @@ def screen_hybrid(
     top_n=None,
     min_prob=None,
     use_sentiment=False,
+    tickers=None,
 ):
     """
     ハイブリッドスクリーニング
@@ -70,6 +71,8 @@ def screen_hybrid(
     use_sentiment : bool
         True の場合、Gemini API によるニュース・センチメント分析フィルターを
         最終段階で適用する。対象は prob_hybrid 上位 SENTIMENT_TOP_N 銘柄。
+    tickers : list[str], optional
+        対象銘柄リスト。省略時は prime.csv 全銘柄。
 
     Returns
     -------
@@ -93,7 +96,7 @@ def screen_hybrid(
 
     # --- 最新データ取得 → 特徴量生成 ---
     print("ハイブリッドスクリーニング用データ取得中...")
-    stock_data = fetch_stock_data(period=SCREEN_PERIOD, interval=INTERVAL)
+    stock_data = fetch_stock_data(tickers=tickers, period=SCREEN_PERIOD, interval=INTERVAL)
     features_dict = make_features(stock_data)
 
     # メモリ節約: 生データは不要

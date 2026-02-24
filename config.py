@@ -5,7 +5,7 @@ import os
 
 # ===== パス設定 =====
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TICKER_CSV = os.path.join(BASE_DIR, "nikkei225_tickers.csv")
+TICKER_CSV = os.path.join(BASE_DIR, "prime.csv")
 MODEL_PATH = os.path.join(BASE_DIR, "models", "model.pkl")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 # 出力先（通知テキスト等）
@@ -24,6 +24,10 @@ LGB_N_JOBS = 2                # LightGBM の並列コア数制限
 TRAIN_PERIOD = "2y"        # 学習用データ取得期間
 SCREEN_PERIOD = "3mo"      # スクリーニング用データ取得期間
 INTERVAL = "1d"            # 日足
+
+# ===== 売買代金フィルタリング設定 =====
+TURNOVER_TOP_N = 500           # 売買代金上位N銘柄を選別
+PREFILTER_PERIOD = "1mo"       # 売買代金計算用の取得期間（直近1ヶ月）
 
 # ===== 特徴量設定 =====
 FEATURE_COLS = [

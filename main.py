@@ -1,11 +1,13 @@
 """
 日本株スイングトレード AI スクリーニング — メインパイプライン
 
+対象: プライム市場銘柄（prime.csv）から売買代金上位500銘柄を自動選別
+
 使い方:
   python main.py              … 学習 → スクリーニング → 通知（フル実行・従来モード）
   python main.py --train      … モデル学習のみ（従来の汎用モデル）
   python main.py --screen     … スクリーニング＋通知のみ（従来の汎用モデル）
-  python main.py --hybrid-train … ハイブリッド学習（グローバル + ローカル225銘柄）
+  python main.py --hybrid-train … ハイブリッド学習（グローバル + ローカル500銘柄）
   python main.py --hybrid       … ハイブリッドスクリーニング＋通知
   python main.py --full-hybrid  … ハイブリッド学習 → スクリーニング → 通知
   python main.py --hybrid --sentiment  … ハイブリッド＋ニュースセンチメント分析
@@ -18,7 +20,7 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import TRAIN_PERIOD, SCREEN_PERIOD, INTERVAL, MODEL_PATH
-from data.ingest_yfinance import fetch_stock_data
+from data.ingest_yfinance import fetch_stock_data, filter_top_by_turnover
 from features.make_features import make_features
 from features.make_dataset import make_dataset
 from models.train_model import train_model
@@ -26,11 +28,19 @@ from screening.screen import screen_stocks
 from notify.line_notify import send_line_message
 
 
-def run_train():
+def get_filtered_tickers():
+    """売買代金上位500銘柄を選別して返す"""
+    return filter_top_by_turnover()
+
+
+def run_train(tickers=None):
     """過去データで学習してモデルを保存（従来の汎用モデル）"""
+    if tickers is None:
+        tickers = get_filtered_tickers()
+
     print("=" * 50)
     print("[1/4] データ取得（学習用）...")
-    stock_data = fetch_stock_data(period=TRAIN_PERIOD, interval=INTERVAL)
+    stock_data = fetch_stock_data(tickers=tickers, period=TRAIN_PERIOD, interval=INTERVAL)
 
     print("[2/4] 特徴量生成...")
     features = make_features(stock_data)
@@ -43,11 +53,14 @@ def run_train():
     print("学習完了 ✓")
 
 
-def run_screen():
+def run_screen(tickers=None):
     """学習済みモデルでスクリーニング → LINE 通知（従来モード）"""
+    if tickers is None:
+        tickers = get_filtered_tickers()
+
     print("=" * 50)
     print("[スクリーニング]")
-    candidates = screen_stocks(model_path=MODEL_PATH)
+    candidates = screen_stocks(model_path=MODEL_PATH, tickers=tickers)
 
     if candidates.empty:
         print("有望銘柄はありませんでした。")
@@ -59,14 +72,17 @@ def run_screen():
     print("完了 ✓")
 
 
-def run_hybrid_train():
-    """ハイブリッドモデル学習（グローバル + ローカル225銘柄）"""
+def run_hybrid_train(tickers=None):
+    """ハイブリッドモデル学習（グローバル + ローカル500銘柄）"""
     from models.train_hybrid import train_hybrid
     import gc
 
+    if tickers is None:
+        tickers = get_filtered_tickers()
+
     print("=" * 50)
     print("[1/3] データ取得（ハイブリッド学習用）...")
-    stock_data = fetch_stock_data(period=TRAIN_PERIOD, interval=INTERVAL)
+    stock_data = fetch_stock_data(tickers=tickers, period=TRAIN_PERIOD, interval=INTERVAL)
 
     print("[2/3] 特徴量生成...")
     features = make_features(stock_data)
@@ -82,13 +98,16 @@ def run_hybrid_train():
     train_hybrid(dataset)
 
 
-def run_hybrid_screen():
+def run_hybrid_screen(tickers=None):
     """ハイブリッドスクリーニング → LINE 通知"""
     from screening.screen_hybrid import screen_hybrid
 
+    if tickers is None:
+        tickers = get_filtered_tickers()
+
     print("=" * 50)
     print("[ハイブリッドスクリーニング]")
-    candidates = screen_hybrid()
+    candidates = screen_hybrid(tickers=tickers)
 
     if candidates.empty:
         print("有望銘柄はありませんでした。")
@@ -100,13 +119,16 @@ def run_hybrid_screen():
     print("完了 ✓")
 
 
-def run_hybrid_screen_with_sentiment():
+def run_hybrid_screen_with_sentiment(tickers=None):
     """ハイブリッドスクリーニング + ニュースセンチメントフィルター → LINE 通知"""
     from screening.screen_hybrid import screen_hybrid
 
+    if tickers is None:
+        tickers = get_filtered_tickers()
+
     print("=" * 50)
     print("[ハイブリッドスクリーニング + センチメント分析]")
-    candidates = screen_hybrid(use_sentiment=True)
+    candidates = screen_hybrid(tickers=tickers, use_sentiment=True)
 
     if candidates.empty:
         print("有望銘柄はありませんでした。（センチメントフィルター適用後）")
@@ -129,26 +151,32 @@ def main():
     args = parser.parse_args()
 
     if args.hybrid_train:
-        run_hybrid_train()
+        tickers = get_filtered_tickers()
+        run_hybrid_train(tickers=tickers)
     elif args.hybrid:
+        tickers = get_filtered_tickers()
         if args.sentiment:
-            run_hybrid_screen_with_sentiment()
+            run_hybrid_screen_with_sentiment(tickers=tickers)
         else:
-            run_hybrid_screen()
+            run_hybrid_screen(tickers=tickers)
     elif args.full_hybrid:
-        run_hybrid_train()
+        tickers = get_filtered_tickers()
+        run_hybrid_train(tickers=tickers)
         if args.sentiment:
-            run_hybrid_screen_with_sentiment()
+            run_hybrid_screen_with_sentiment(tickers=tickers)
         else:
-            run_hybrid_screen()
+            run_hybrid_screen(tickers=tickers)
     elif args.train:
-        run_train()
+        tickers = get_filtered_tickers()
+        run_train(tickers=tickers)
     elif args.screen:
-        run_screen()
+        tickers = get_filtered_tickers()
+        run_screen(tickers=tickers)
     else:
         # デフォルト: 従来の学習 → スクリーニング
-        run_train()
-        run_screen()
+        tickers = get_filtered_tickers()
+        run_train(tickers=tickers)
+        run_screen(tickers=tickers)
 
 
 if __name__ == "__main__":

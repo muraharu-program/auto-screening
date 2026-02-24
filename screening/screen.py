@@ -12,7 +12,7 @@ from data.ingest_yfinance import fetch_stock_data
 from features.make_features import make_features
 from config import MODEL_PATH, SCREEN_PERIOD, INTERVAL, MIN_VOLUME, TOP_N, MIN_PROB
 
-def screen_stocks(model_path=None, min_volume=None, top_n=None, min_prob=None):
+def screen_stocks(model_path=None, min_volume=None, top_n=None, min_prob=None, tickers=None):
     if model_path is None:
         model_path = MODEL_PATH
     if min_volume is None:
@@ -31,7 +31,7 @@ def screen_stocks(model_path=None, min_volume=None, top_n=None, min_prob=None):
 
     # 最新データ取得 → 特徴量生成
     print("スクリーニング用データ取得中...")
-    stock_data = fetch_stock_data(period=SCREEN_PERIOD, interval=INTERVAL)
+    stock_data = fetch_stock_data(tickers=tickers, period=SCREEN_PERIOD, interval=INTERVAL)
     features_dict = make_features(stock_data)
 
     # 各銘柄の最新日データを取得
