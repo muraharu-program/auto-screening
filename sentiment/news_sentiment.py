@@ -239,27 +239,41 @@ def analyze_sentiment_gemini(
         headlines_text=headlines_text,
     )
 
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name)
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.1,
-                max_output_tokens=256,
-            ),
-        )
-        raw_text = response.text
-        result = _parse_gemini_response(raw_text)
-        if result is not None:
-            return result
-        else:
-            print(f"  [{ticker}] Gemini 応答パース失敗: {raw_text[:100]}")
-            return default_result
+    # retry logic to handle rate limits (429) and transient errors
+    max_attempts = 3
+    wait_on_rate = 10  # seconds to wait when quota exceeded
+    for attempt in range(1, max_attempts + 1):
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.1,
+                    max_output_tokens=256,
+                ),
+            )
+            raw_text = response.text
+            result = _parse_gemini_response(raw_text)
+            if result is not None:
+                return result
+            else:
+                print(f"  [{ticker}] Gemini 応答パース失敗: {raw_text[:100]}")
+                return default_result
 
-    except Exception as e:
-        print(f"  [{ticker}] Gemini API エラー: {e}")
-        return default_result
+        except Exception as e:
+            msg = str(e)
+            print(f"  [{ticker}] Gemini API エラー (attempt {attempt}): {e}")
+            # rate limit detected?
+            if "Quota exceeded" in msg or "429" in msg:
+                if attempt < max_attempts:
+                    print(f"    レート制限検出、{wait_on_rate}s 待機して再試行します...")
+                    time.sleep(wait_on_rate)
+                    continue
+            # other or final error -- give up
+            break
+    # すべての試行で失敗した場合はデフォルトスコア
+    return default_result
 
 
 # ====================================================================== #

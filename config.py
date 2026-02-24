@@ -60,7 +60,7 @@ GEMINI_MODEL = "gemini-2.5-flash-lite"       # 使用する Gemini モデル名
 SENTIMENT_TOP_N = 30                         # センチメント分析対象の上位銘柄数
 SENTIMENT_MIN_SCORE = 4                      # 最終通知に残す最低センチメントスコア（1-5）
 SENTIMENT_DEFAULT_SCORE = 3                  # ニュース取得失敗時のデフォルトスコア
-SENTIMENT_API_SLEEP = 2.0                    # Gemini API 呼び出し間のスリープ（秒）
+SENTIMENT_API_SLEEP = 6.0                    # Gemini API 呼び出し間のスリープ（秒）。レート制限が厳しいため遅めに設定
 NEWS_LOOKBACK_DAYS = 7                       # ニュース取得の遡り日数
 
 # ===== LINE Messaging API =====
