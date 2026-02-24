@@ -1,7 +1,10 @@
 """
 スクリーニングシステム共通設定
 """
+from dotenv import load_dotenv
 import os
+
+load_dotenv()
 
 # ===== パス設定 =====
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
