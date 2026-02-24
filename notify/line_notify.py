@@ -30,6 +30,7 @@ def format_message(candidates_df):
         code = row["code"]
         close = row["Close"]
         vol = row["Volume"]
+        yahoo_finance_url = f"https://finance.yahoo.co.jp/quote/{code}"
 
         if is_hybrid:
             prob_g = row.get("prob_global", np.nan)
@@ -38,7 +39,7 @@ def format_message(candidates_df):
             local_str = f"{prob_l:.1%}" if not np.isnan(prob_l) else "N/A"
 
             block = (
-                f"銘柄: {code}\n"
+                f"銘柄: {code} ({yahoo_finance_url})\n"
                 f"  終値: {close:,.0f}円\n"
                 f"  出来高: {vol:,.0f}\n"
                 f"  Global: {prob_g:.1%} / Local: {local_str}\n"
@@ -59,7 +60,7 @@ def format_message(candidates_df):
         else:
             prob = row["prob"]
             lines.append(
-                f"銘柄: {code}\n"
+                f"銘柄: {code} ({yahoo_finance_url})\n"
                 f"  終値: {close:,.0f}円\n"
                 f"  出来高: {vol:,.0f}\n"
                 f"  上昇確率: {prob:.1%}\n"
