@@ -35,6 +35,15 @@ jobs:
       - name: Run hybrid screening with sentiment
         run: python main.py --hybrid --sentiment
 
+      # スクリーニング結果をリポジトリにコミット＆プッシュ
+      - name: Commit and push screening results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add outputs/
+          git diff --cached --quiet || git commit -m "📊 スクリーニング結果 ($(date '+%Y-%m-%d'))"
+          git push
+
       # モデル再学習は週 1 回（月曜）だけ — ハイブリッド学習に変更
   retrain:
     runs-on: ubuntu-latest
