@@ -61,11 +61,19 @@ jobs:
       - name: Retrain hybrid model
         run: python main.py --hybrid-train
 
+      # 古いローカルモデルを削除（最新のみ残す）
+      - name: Clean old local models
+        run: |
+          cd models/local
+          # 再学習で生成された最新モデルだけが残っている状態
+          # Git履歴の肥大化を防ぐため、前回のモデルをGitから削除して最新に置き換え
+          echo "ローカルモデル数: $(ls -1 *.pkl 2>/dev/null | wc -l)"
+
       # 学習済みモデルをリポジトリにコミット＆プッシュ
       - name: Commit and push updated models
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add models/global_model.pkl models/local/
+          git add -A models/global_model.pkl models/local/
           git diff --cached --quiet || git commit -m "🤖 週次モデル再学習 ($(date '+%Y-%m-%d'))"
           git push

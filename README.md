@@ -16,8 +16,8 @@
 | モデル学習 | LightGBM で「5営業日後に5%以上上昇するか」を学習（グローバル + ローカル500個） |
 | スクリーニング | ハイブリッド予測（グローバル×ローカルの重み付け合成）で有望銘柄を抽出 |
 | センチメント分析 | Gemini API でニュース見出しを分析し、ポジティブ銘柄のみに絞り込み |
-| 通知 | LINE Messaging API で有望銘柄を自動通知 |
-| 自動化 | GitHub Actions で平日毎日自動実行 |
+| 通知 | LINE Messaging API（Broadcast）で友だち全員に自動通知 |
+| 自動化 | GitHub Actions で平日毎日自動実行＋結果・モデルを自動コミット |
 
 ---
 
@@ -30,17 +30,15 @@
 ├── requirements.txt           # 依存パッケージ
 ├── prime.csv                  # プライム市場銘柄コード一覧（約1,600銘柄）
 ├── data/
-│   ├── ingest_yfinance.py     # yfinance で株価データ取得 + 売買代金フィルタ
-│   └── nikkei225_tickers.py   # 銘柄リスト自動取得スクリプト
+│   └── ingest_yfinance.py     # yfinance で株価データ取得 + 売買代金フィルタ
 ├── features/
 │   ├── make_features.py       # テクニカル指標の計算
 │   └── make_dataset.py        # 学習データセットの作成
 ├── models/
 │   ├── train_model.py         # 従来の汎用モデル学習・保存
 │   ├── train_hybrid.py        # ハイブリッド学習（グローバル + ローカル500個）
-│   ├── model.pkl              # 従来モデル（自動生成）
-│   ├── global_model.pkl       # グローバルモデル（自動生成）
-│   └── local/                 # ローカルモデル置き場（自動生成）
+│   ├── global_model.pkl       # グローバルモデル（自動生成・週次更新）
+│   └── local/                 # ローカルモデル置き場（自動生成・週次更新）
 │       └── local_model_*.pkl  # 銘柄ごとの個別モデル
 ├── screening/
 │   ├── screen.py              # 従来スクリーニング推論
@@ -48,7 +46,9 @@
 ├── sentiment/
 │   └── news_sentiment.py      # ニュース取得 + Gemini センチメント分析
 ├── notify/
-│   └── line_notify.py         # LINE Messaging API で通知（ハイブリッド対応）
+│   └── line_notify.py         # LINE Broadcast API で友だち全員に通知
+├── outputs/                   # スクリーニング結果ログ（自動蓄積）
+│   └── screening_*.txt
 └── .github/
     └── workflows/
         └── screening.yml      # GitHub Actions 自動実行設定
@@ -84,23 +84,24 @@ pip install -r requirements.txt
 
 ### 3. LINE Messaging API の設定（通知を使う場合）
 
+通知は **Broadcast API**（友だち追加済みの全ユーザーに一斉配信）を使用します。
+
 1. [LINE Developers](https://developers.line.biz/) でプロバイダー・チャネルを作成
 2. **Messaging API チャネル** を選択
 3. 「チャネルアクセストークン（長期）」を発行
-4. 自分のユーザーIDを確認（チャネル基本設定の「あなたのユーザーID」）
+4. 通知を受け取りたいユーザーは **LINE公式アカウントを友だち追加** する
 5. 環境変数を設定:
 
 ```bash
 # Windows (PowerShell)
 $env:LINE_CHANNEL_ACCESS_TOKEN = "あなたのチャネルアクセストークン"
-$env:LINE_USER_ID = "あなたのユーザーID"
 
 # Mac / Linux
 export LINE_CHANNEL_ACCESS_TOKEN="あなたのチャネルアクセストークン"
-export LINE_USER_ID="あなたのユーザーID"
 ```
 
-> LINE の設定がなくても、コンソール出力でスクリーニング結果を確認できます。
+> Broadcast API のため、`LINE_USER_ID` の設定は不要です（友だち全員に配信されます）。  
+> LINE の設定がなくても、コンソール出力やファイル出力でスクリーニング結果を確認できます。
 
 ---
 
@@ -198,7 +199,7 @@ python main.py --screen
 | `TRAIN_SLEEP_SEC` | `0.5` | ローカル学習ループ間のスリープ（秒） |
 | `LGB_N_JOBS` | `2` | LightGBM の並列コア数制限 |
 | `GEMINI_API_KEY` | (環境変数) | Gemini API キー |
-| `GEMINI_MODEL` | `"gemini-1.5-flash"` | 使用する Gemini モデル名 |
+| `GEMINI_MODEL` | `"gemini-2.5-flash-lite"` | 使用する Gemini モデル名 |
 | `SENTIMENT_TOP_N` | `30` | センチメント分析対象の上位銘柄数 |
 | `SENTIMENT_MIN_SCORE` | `4` | 最終通知に残す最低センチメントスコア |
 | `SENTIMENT_DEFAULT_SCORE` | `3` | ニュース取得失敗時のデフォルトスコア |
@@ -230,18 +231,27 @@ python main.py --screen
 1. プロジェクトを GitHub にプッシュ
 2. GitHub リポジトリの **Settings → Secrets and variables → Actions** で以下を追加:
    - `LINE_CHANNEL_ACCESS_TOKEN`
-   - `LINE_USER_ID`
    - `GEMINI_API_KEY`（センチメント分析を使う場合）
-3. `.github/workflows/screening.yml` が自動で有効になります
+3. **Settings → Actions → General → Workflow permissions** で **"Read and write permissions"** を有効にする（モデル・結果の自動コミットに必要）
+4. `.github/workflows/screening.yml` が自動で有効になります
 
 ### スケジュール
 
 | 実行タイミング | 内容 |
 |---|---|
-| 平日 16:00 JST | ハイブリッドスクリーニング + 通知 |
-| 月曜 16:00 JST | ハイブリッドモデル再学習 |
+| 平日 16:00 JST | ハイブリッドスクリーニング + 通知 + 結果をリポジトリにコミット |
+| 月曜 16:00 JST | ハイブリッドモデル再学習 + モデルをリポジトリにコミット |
 
 手動実行も可能です（GitHub Actions → workflow_dispatch）。
+
+### 自動コミット
+
+GitHub Actions の各ジョブ完了後、以下のファイルが自動的にリポジトリにコミット＆プッシュされます：
+
+| ジョブ | 対象ファイル | 頻度 |
+|---|---|---|
+| `screening` | `outputs/screening_*.txt` | 平日毎日 |
+| `retrain` | `models/global_model.pkl`, `models/local/*.pkl` | 毎週月曜 |
 
 ---
 
@@ -328,12 +338,14 @@ export GEMINI_API_KEY="あなたのAPIキー"
 | 問題 | 対処 |
 |---|---|
 | `ModuleNotFoundError` | `pip install -r requirements.txt` を実行 |
-| `FileNotFoundError: nikkei225_tickers.csv` | 銘柄リストを作成（上記「銘柄リストの準備」参照） |
-| `yfinance` でデータ取得失敗 | ネット接続を確認。時間を置いて再実行 |
-| LINE 通知が届かない | 環境変数、トークン、ユーザーIDを確認 |
+| `FileNotFoundError: prime.csv` | 銘柄リスト `prime.csv` をプロジェクトルートに配置（上記「銘柄リストの準備」参照） |
+| `yfinance` でデータ取得失敗 | ネット接続を確認。時間を置いて再実行（レートリミットの可能性あり） |
+| LINE 通知が届かない | `LINE_CHANNEL_ACCESS_TOKEN` を確認。Broadcastのため友だち追加が必要 |
+| 特定の人に通知が届かない | その人がLINE公式アカウントを友だち追加しているか確認 |
 | モデル精度が低い | `config.py` の `TRAIN_PERIOD` を長くする、特徴量を追加 |
 | Gemini API エラー | `GEMINI_API_KEY` 環境変数を確認。Rate Limit の場合は `SENTIMENT_API_SLEEP` を増やす（デフォルトは6秒） |
 | センチメント分析で全銘柄が除外される | `SENTIMENT_MIN_SCORE` を 3 に下げる、または `--sentiment` なしで実行 |
+| GitHub Actions で `git push` 失敗 | リポジトリの Workflow permissions を "Read and write" に変更 |
 
 ---
 
