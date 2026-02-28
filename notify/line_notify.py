@@ -1,5 +1,5 @@
 """
-LINE Messaging API で PUSH 通知を送信
+LINE Messaging API で Broadcast 通知を送信（友だち全員に配信）
 """
 import sys
 import os
@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import requests
 import pandas as pd
 import numpy as np
-from config import LINE_CHANNEL_ACCESS_TOKEN, LINE_USER_ID
+from config import LINE_CHANNEL_ACCESS_TOKEN
 
 def format_message(candidates_df):
     """スクリーニング結果を読みやすいメッセージに整形（ハイブリッド対応）"""
@@ -69,13 +69,11 @@ def format_message(candidates_df):
 
 def send_line_message(candidates, token=None, user_id=None):
     """
-    LINE Messaging API で PUSH メッセージを送信
+    LINE Messaging API で Broadcast メッセージを送信（友だち全員に配信）
     candidates: DataFrame or str
     """
     if token is None:
         token = LINE_CHANNEL_ACCESS_TOKEN
-    if user_id is None:
-        user_id = LINE_USER_ID
 
     # メッセージを作成（まずはファイル保存のために常に作る）
     if isinstance(candidates, pd.DataFrame):
@@ -101,23 +99,22 @@ def send_line_message(candidates, token=None, user_id=None):
     except Exception as e:
         print(f"結果ファイル保存エラー: {e}")
 
-    # LINE送信はトークン/ユーザーIDが設定されている場合のみ実行
-    if not token or not user_id:
-        print("警告: LINE トークンまたはユーザー ID が未設定です。LINE送信をスキップしました。")
+    # LINE送信はトークンが設定されている場合のみ実行
+    if not token:
+        print("警告: LINE トークンが未設定です。LINE送信をスキップしました。")
         return None
 
-    url = "https://api.line.me/v2/bot/message/push"
+    url = "https://api.line.me/v2/bot/message/broadcast"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
     payload = {
-        "to": user_id,
         "messages": [{"type": "text", "text": msg}],
     }
     try:
         r = requests.post(url, headers=headers, json=payload)
-        print(f"LINE 通知ステータス: {r.status_code}")
+        print(f"LINE Broadcast 通知ステータス: {r.status_code}")
         if r.status_code != 200:
             print(f"LINE エラー: {r.text}")
         return r.status_code
