@@ -2,7 +2,11 @@ name: Daily Stock Screening
 
 on:
   schedule:
-    # JST 16:00 = UTC 07:00 (平日のみ)
+    # JST 10:00 = UTC 01:00 (平日のみ)
+    - cron: '0 1 * * 1-5'
+    # JST 13:00 = UTC 04:00
+    - cron: '0 4 * * 1-5'
+    # JST 16:00 = UTC 07:00
     - cron: '0 7 * * 1-5'
   workflow_dispatch:
 
@@ -31,9 +35,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # ハイブリッドスクリーニング + ニュースセンチメント分析
-      - name: Run hybrid screening with sentiment
-        run: python main.py --hybrid --sentiment
+      # 10時/13時は地合い判定のみ、16時は通常スクリーニング
+      - name: Run regime check or screening
+        run: |
+          if [ "${{ github.event.schedule }}" = "0 1 * * 1-5" ] || \
+             [ "${{ github.event.schedule }}" = "0 4 * * 1-5" ]; then
+            python main.py --regime-only
+          else
+            python main.py --hybrid --sentiment
+          fi
 
       # スクリーニング結果をリポジトリにコミット＆プッシュ
       - name: Commit and push screening results

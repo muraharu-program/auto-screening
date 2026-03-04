@@ -16,10 +16,12 @@
 import sys
 import os
 import argparse
+import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import TRAIN_PERIOD, SCREEN_PERIOD, INTERVAL, MODEL_PATH
+from config import MARKET_REGIME_ENABLED, MARKET_REGIME_PERIOD, MARKET_REGIME_BLOCK_BUY
 from data.ingest_yfinance import fetch_stock_data, filter_top_by_turnover
 from features.make_features import make_features
 from features.make_dataset import make_dataset
@@ -31,6 +33,18 @@ from notify.line_notify import send_line_message
 def get_filtered_tickers():
     """売買代金上位500銘柄を選別して返す"""
     return filter_top_by_turnover()
+
+
+def check_market_regime():
+    """マーケット地合いを判定して結果を返す（無効時は None）"""
+    if not MARKET_REGIME_ENABLED:
+        return None
+    try:
+        from market.market_regime import assess_market_regime
+        return assess_market_regime(nikkei_period=MARKET_REGIME_PERIOD)
+    except Exception as e:
+        print(f"地合い判定エラー（スキップ）: {e}")
+        return None
 
 
 def run_train(tickers=None):
@@ -53,7 +67,7 @@ def run_train(tickers=None):
     print("学習完了 ✓")
 
 
-def run_screen(tickers=None):
+def run_screen(tickers=None, regime=None):
     """学習済みモデルでスクリーニング → LINE 通知（従来モード）"""
     if tickers is None:
         tickers = get_filtered_tickers()
@@ -68,7 +82,7 @@ def run_screen(tickers=None):
         print(candidates.to_string(index=False))
 
     print("[通知]")
-    send_line_message(candidates)
+    send_line_message(candidates, regime=regime)
     print("完了 ✓")
 
 
@@ -98,7 +112,7 @@ def run_hybrid_train(tickers=None):
     train_hybrid(dataset)
 
 
-def run_hybrid_screen(tickers=None):
+def run_hybrid_screen(tickers=None, regime=None):
     """ハイブリッドスクリーニング → LINE 通知"""
     from screening.screen_hybrid import screen_hybrid
 
@@ -115,11 +129,11 @@ def run_hybrid_screen(tickers=None):
         print(candidates.to_string(index=False))
 
     print("[通知]")
-    send_line_message(candidates)
+    send_line_message(candidates, regime=regime)
     print("完了 ✓")
 
 
-def run_hybrid_screen_with_sentiment(tickers=None):
+def run_hybrid_screen_with_sentiment(tickers=None, regime=None):
     """ハイブリッドスクリーニング + ニュースセンチメントフィルター → LINE 通知"""
     from screening.screen_hybrid import screen_hybrid
 
@@ -136,7 +150,7 @@ def run_hybrid_screen_with_sentiment(tickers=None):
         print(candidates.to_string(index=False))
 
     print("[通知]")
-    send_line_message(candidates)
+    send_line_message(candidates, regime=regime)
     print("完了 ✓")
 
 
@@ -148,7 +162,37 @@ def main():
     parser.add_argument("--hybrid",       action="store_true", help="ハイブリッドスクリーニング＋通知")
     parser.add_argument("--full-hybrid",  action="store_true", help="ハイブリッド学習→スクリーニング→通知")
     parser.add_argument("--sentiment",    action="store_true", help="ニュースセンチメント分析フィルターを追加（--hybrid/--full-hybrid と併用）")
+    parser.add_argument("--no-regime",    action="store_true", help="マーケット地合い判定をスキップ")
+    parser.add_argument("--regime-only", action="store_true", help="地合い判定のみ実行（通知は変化時のみ）")
     args = parser.parse_args()
+
+    # --- マーケット地合い判定（学習のみモード以外でスクリーニング前に実行）---
+    regime = None
+    if not (args.train or args.hybrid_train) and not args.no_regime:
+        regime = check_market_regime()
+
+    # regime-only モードならここで終了
+    if args.regime_only:
+        # regime が None の場合は通知なし
+        if regime is not None:
+            send_line_message(pd.DataFrame(), regime=regime)
+        return
+
+    # 判定後、地合いが悪く買いをブロックする設定なら
+    if regime is not None and MARKET_REGIME_BLOCK_BUY and not regime.should_buy:
+        print("\n" + "=" * 50)
+        print(f"⚠ 地合い判定: {regime.level}")
+        print(f"  {regime.action}")
+        if regime.should_exit_all:
+            print("  → 全ポジション決済を推奨します。")
+        elif regime.should_reduce:
+            print("  → ポジション縮小・利確を推奨します。")
+        print("  → 新規買い推奨銘柄の通知をスキップします。")
+        print("=" * 50)
+
+        # 地合い警告のみ通知（銘柄なし）
+        send_line_message(pd.DataFrame(), regime=regime)
+        return
 
     if args.hybrid_train:
         tickers = get_filtered_tickers()
@@ -156,27 +200,27 @@ def main():
     elif args.hybrid:
         tickers = get_filtered_tickers()
         if args.sentiment:
-            run_hybrid_screen_with_sentiment(tickers=tickers)
+            run_hybrid_screen_with_sentiment(tickers=tickers, regime=regime)
         else:
-            run_hybrid_screen(tickers=tickers)
+            run_hybrid_screen(tickers=tickers, regime=regime)
     elif args.full_hybrid:
         tickers = get_filtered_tickers()
         run_hybrid_train(tickers=tickers)
         if args.sentiment:
-            run_hybrid_screen_with_sentiment(tickers=tickers)
+            run_hybrid_screen_with_sentiment(tickers=tickers, regime=regime)
         else:
-            run_hybrid_screen(tickers=tickers)
+            run_hybrid_screen(tickers=tickers, regime=regime)
     elif args.train:
         tickers = get_filtered_tickers()
         run_train(tickers=tickers)
     elif args.screen:
         tickers = get_filtered_tickers()
-        run_screen(tickers=tickers)
+        run_screen(tickers=tickers, regime=regime)
     else:
         # デフォルト: 従来の学習 → スクリーニング
         tickers = get_filtered_tickers()
         run_train(tickers=tickers)
-        run_screen(tickers=tickers)
+        run_screen(tickers=tickers, regime=regime)
 
 
 if __name__ == "__main__":

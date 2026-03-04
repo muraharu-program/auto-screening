@@ -63,6 +63,14 @@ SENTIMENT_DEFAULT_SCORE = 3                  # ニュース取得失敗時のデ
 SENTIMENT_API_SLEEP = 6.0                    # Gemini API 呼び出し間のスリープ（秒）。レート制限が厳しいため遅めに設定
 NEWS_LOOKBACK_DAYS = 7                       # ニュース取得の遡り日数
 
+# ===== マーケット地合い判定設定 =====
+MARKET_REGIME_ENABLED = True         # 地合い判定を有効にするか
+MARKET_REGIME_PERIOD = "6mo"          # 日経平均のデータ取得期間
+# 地合いが悪い（CAUTION以下）場合にスクリーニング結果を抑制するか
+# True: 地合い悪化時は「買い推奨なし」とし、注意喚起のみ通知
+# False: 地合い情報を付記するが、スクリーニング結果は通常通り表示
+MARKET_REGIME_BLOCK_BUY = True
+
 # ===== LINE Messaging API =====
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_USER_ID = os.environ.get("LINE_USER_ID", "")

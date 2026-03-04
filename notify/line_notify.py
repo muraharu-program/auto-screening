@@ -8,23 +8,61 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import requests
 import pandas as pd
 import numpy as np
-from config import LINE_CHANNEL_ACCESS_TOKEN
+from config import LINE_CHANNEL_ACCESS_TOKEN, OUTPUT_DIR
 
-def format_message(candidates_df):
-    """スクリーニング結果を読みやすいメッセージに整形（ハイブリッド対応）"""
+def format_message(candidates_df, regime=None):
+    """スクリーニング結果を読みやすいメッセージに整形（ハイブリッド対応）
+
+    candidates_df が空でない場合、地合い情報は一行要約に短縮して表示する。
+    """
+    lines = []
+
+    # --- 地合い情報を先頭に表示 ---
+    if regime is not None:
+        try:
+            # スクリーニング銘柄が存在する場合は簡潔なサマリーのみを付加
+            if not candidates_df.empty:
+                # 簡易メッセージ（1行）
+                level_emoji = {
+                    "STRONG_BUY": "🟢🟢",
+                    "BUY":        "🟢",
+                    "CAUTION":    "🟡",
+                    "DANGER":     "🔴",
+                    "CRISIS":     "🔴🔴",
+                }
+                emoji = level_emoji.get(regime.level, "❓")
+                lines.append(f"{emoji} 地合い: {regime.level} — {regime.action}")
+                lines.append("\n" + "─" * 30 + "\n")
+            else:
+                from market.market_regime import format_regime_message
+                lines.append(format_regime_message(regime))
+                lines.append("\n" + "─" * 30 + "\n")
+        except Exception:
+            pass
+
     if candidates_df.empty:
-        return "本日の有望銘柄はありませんでした。"
+        if regime is not None and not regime.should_buy:
+            # 地合いが悪い場合のメッセージ
+            if regime.should_exit_all:
+                lines.append("\n⚠ 地合いが非常に悪いため、今日の買い推奨銘柄はありません。")
+                lines.append("保有中の全ポジションの決済（損切り含む）を検討してください。")
+            elif regime.should_reduce:
+                lines.append("\n⚠ 地合いが悪化しているため、今日の買い推奨銘柄はありません。")
+                lines.append("保有中の銘柄の利確・ポジション縮小を検討してください。")
+        else:
+            lines.append("本日の有望銘柄はありませんでした。")
+        return "\n".join(lines)
 
     # ハイブリッドモードか従来モードかを判定
     is_hybrid = "prob_hybrid" in candidates_df.columns
     has_sentiment = "sentiment_score" in candidates_df.columns
 
     if is_hybrid and has_sentiment:
-        lines = ["📈 本日のスクリーニング結果（ハイブリッド＋センチメント）\n"]
+        lines.append("📈 本日のスクリーニング結果（ハイブリッド＋センチメント）\n")
     elif is_hybrid:
-        lines = ["📈 本日のスクリーニング結果（ハイブリッド）\n"]
+        lines.append("📈 本日のスクリーニング結果（ハイブリッド）\n")
     else:
-        lines = ["📈 本日のスクリーニング結果\n"]
+        lines.append("📈 本日のスクリーニング結果\n")
 
     for _, row in candidates_df.iterrows():
         code = row["code"]
@@ -67,17 +105,18 @@ def format_message(candidates_df):
             )
     return "\n".join(lines)
 
-def send_line_message(candidates, token=None, user_id=None):
+def send_line_message(candidates, token=None, user_id=None, regime=None):
     """
     LINE Messaging API で Broadcast メッセージを送信（友だち全員に配信）
     candidates: DataFrame or str
+    regime: MarketRegime or None
     """
     if token is None:
         token = LINE_CHANNEL_ACCESS_TOKEN
 
     # メッセージを作成（まずはファイル保存のために常に作る）
     if isinstance(candidates, pd.DataFrame):
-        msg = format_message(candidates)
+        msg = format_message(candidates, regime=regime)
     elif isinstance(candidates, str):
         msg = candidates
     else:
@@ -88,7 +127,6 @@ def send_line_message(candidates, token=None, user_id=None):
 
     # 結果をテキストファイルにも保存（LINE送信の有無に関わらず行う）
     from datetime import datetime
-    from config import OUTPUT_DIR
     try:
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -98,6 +136,35 @@ def send_line_message(candidates, token=None, user_id=None):
         print(f"結果をファイル出力: {fname}")
     except Exception as e:
         print(f"結果ファイル保存エラー: {e}")
+
+    # --- 最終地合い通知の記録管理 ---
+    last_path = os.path.join(OUTPUT_DIR, "last_regime.txt")
+    def _load_last():
+        try:
+            with open(last_path, "r", encoding="utf-8") as fr:
+                return fr.read().strip()
+        except Exception:
+            return ""
+    def _save_last(text):
+        try:
+            with open(last_path, "w", encoding="utf-8") as fw:
+                fw.write(text)
+        except Exception:
+            pass
+
+    prev_regime = _load_last()
+    cur_regime = "" if regime is None else regime.summary
+
+    # 通知をスキップすべきか判定
+    if isinstance(candidates, pd.DataFrame) and candidates.empty:
+        if prev_regime == cur_regime and cur_regime != "":
+            print("前回と地合い判定が同じためLINE通知をスキップします。")
+            return None
+    # （候補が存在する場合は常に送信）
+
+    # 保存するのは地合いスコアのみ
+    if cur_regime:
+        _save_last(cur_regime)
 
     # LINE送信はトークンが設定されている場合のみ実行
     if not token:
