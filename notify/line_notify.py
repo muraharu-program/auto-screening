@@ -8,46 +8,59 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import requests
 import pandas as pd
 import numpy as np
+from datetime import datetime
 from config import LINE_CHANNEL_ACCESS_TOKEN, OUTPUT_DIR
 
-def format_message(candidates_df, regime=None):
-    """スクリーニング結果を読みやすいメッセージに整形（ハイブリッド対応）
 
-    candidates_df が空でない場合、地合い情報は一行要約に短縮して表示する。
+# ========================================================================
+#  地合い通知 重複抑制（last_regime.txt）
+# ========================================================================
+
+_LAST_REGIME_PATH = os.path.join(OUTPUT_DIR, "last_regime.txt")
+
+
+def _load_last_regime() -> str:
+    """前回の地合い判定サマリーを読み込む"""
+    try:
+        with open(_LAST_REGIME_PATH, "r", encoding="utf-8") as fr:
+            return fr.read().strip()
+    except Exception:
+        return ""
+
+
+def _save_last_regime(text: str):
+    """地合い判定サマリーをファイルに保存"""
+    try:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        with open(_LAST_REGIME_PATH, "w", encoding="utf-8") as fw:
+            fw.write(text)
+    except Exception:
+        pass
+
+def format_message(candidates_df, regime=None):
+    """スクリーニング結果を読みやすいメッセージに整形（LINE通知用）
+
+    地合い情報は常に簡潔な5段階サマリーのみ表示。
+    詳細な指標情報はファイル保存のみ（_build_file_message）。
     """
     lines = []
 
-    # --- 地合い情報を先頭に表示 ---
+    # --- 地合い情報を先頭に表示（常に簡潔サマリー）---
     if regime is not None:
         try:
-            # スクリーニング銘柄が存在する場合は簡潔なサマリーのみを付加
-            if not candidates_df.empty:
-                # 簡易メッセージ（1行）
-                level_emoji = {
-                    "STRONG_BUY": "🟢🟢",
-                    "BUY":        "🟢",
-                    "CAUTION":    "🟡",
-                    "DANGER":     "🔴",
-                    "CRISIS":     "🔴🔴",
-                }
-                emoji = level_emoji.get(regime.level, "❓")
-                lines.append(f"{emoji} 地合い: {regime.level} — {regime.action}")
-                lines.append("\n" + "─" * 30 + "\n")
-            else:
-                from market.market_regime import format_regime_message
-                lines.append(format_regime_message(regime))
-                lines.append("\n" + "─" * 30 + "\n")
+            from market.market_regime import format_regime_summary
+            lines.append(format_regime_summary(regime))
+            lines.append("\n" + "─" * 30 + "\n")
         except Exception:
             pass
 
     if candidates_df.empty:
         if regime is not None and not regime.should_buy:
-            # 地合いが悪い場合のメッセージ
             if regime.should_exit_all:
-                lines.append("\n⚠ 地合いが非常に悪いため、今日の買い推奨銘柄はありません。")
+                lines.append("⚠ 地合いが非常に悪いため、今日の買い推奨銘柄はありません。")
                 lines.append("保有中の全ポジションの決済（損切り含む）を検討してください。")
             elif regime.should_reduce:
-                lines.append("\n⚠ 地合いが悪化しているため、今日の買い推奨銘柄はありません。")
+                lines.append("⚠ 地合いが悪化しているため、今日の買い推奨銘柄はありません。")
                 lines.append("保有中の銘柄の利確・ポジション縮小を検討してください。")
         else:
             lines.append("本日の有望銘柄はありませんでした。")
@@ -105,6 +118,29 @@ def format_message(candidates_df, regime=None):
             )
     return "\n".join(lines)
 
+def _build_file_message(candidates, regime):
+    """ファイル保存用メッセージ（LINE通知メッセージ＋地合い詳細を追記）"""
+    if isinstance(candidates, pd.DataFrame):
+        msg = format_message(candidates, regime=regime)
+    elif isinstance(candidates, str):
+        msg = candidates
+    else:
+        msg = str(candidates)
+
+    # 地合い詳細をファイルにのみ追記
+    if regime is not None:
+        try:
+            from market.market_regime import format_regime_message
+            msg += "\n\n" + "=" * 40 + "\n"
+            msg += "【地合い判定 詳細ログ】\n"
+            msg += "=" * 40 + "\n"
+            msg += format_regime_message(regime)
+        except Exception:
+            pass
+
+    return msg
+
+
 def send_line_message(candidates, token=None, user_id=None, regime=None):
     """
     LINE Messaging API で Broadcast メッセージを送信（友だち全員に配信）
@@ -114,45 +150,33 @@ def send_line_message(candidates, token=None, user_id=None, regime=None):
     if token is None:
         token = LINE_CHANNEL_ACCESS_TOKEN
 
-    # メッセージを作成（まずはファイル保存のために常に作る）
+    # LINE通知用メッセージ（簡潔版）
     if isinstance(candidates, pd.DataFrame):
-        msg = format_message(candidates, regime=regime)
+        line_msg = format_message(candidates, regime=regime)
     elif isinstance(candidates, str):
-        msg = candidates
+        line_msg = candidates
     else:
-        msg = str(candidates)
+        line_msg = str(candidates)
 
     # LINE Messaging API の上限は 5000 文字
-    msg = msg[:5000]
+    line_msg = line_msg[:5000]
 
-    # 結果をテキストファイルにも保存（LINE送信の有無に関わらず行う）
-    from datetime import datetime
+    # ファイル保存用メッセージ（詳細版）
+    file_msg = _build_file_message(candidates, regime)
+
+    # 結果をテキストファイルに保存（LINE送信の有無に関わらず行う）
     try:
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         fname = os.path.join(OUTPUT_DIR, f"screening_{ts}.txt")
         with open(fname, "w", encoding="utf-8") as fw:
-            fw.write(msg)
+            fw.write(file_msg)
         print(f"結果をファイル出力: {fname}")
     except Exception as e:
         print(f"結果ファイル保存エラー: {e}")
 
     # --- 最終地合い通知の記録管理 ---
-    last_path = os.path.join(OUTPUT_DIR, "last_regime.txt")
-    def _load_last():
-        try:
-            with open(last_path, "r", encoding="utf-8") as fr:
-                return fr.read().strip()
-        except Exception:
-            return ""
-    def _save_last(text):
-        try:
-            with open(last_path, "w", encoding="utf-8") as fw:
-                fw.write(text)
-        except Exception:
-            pass
-
-    prev_regime = _load_last()
+    prev_regime = _load_last_regime()
     cur_regime = "" if regime is None else regime.summary
 
     # 通知をスキップすべきか判定
@@ -162,9 +186,9 @@ def send_line_message(candidates, token=None, user_id=None, regime=None):
             return None
     # （候補が存在する場合は常に送信）
 
-    # 保存するのは地合いスコアのみ
+    # 保存するのは地合いサマリーのみ
     if cur_regime:
-        _save_last(cur_regime)
+        _save_last_regime(cur_regime)
 
     # LINE送信はトークンが設定されている場合のみ実行
     if not token:
@@ -177,7 +201,7 @@ def send_line_message(candidates, token=None, user_id=None, regime=None):
         "Content-Type": "application/json",
     }
     payload = {
-        "messages": [{"type": "text", "text": msg}],
+        "messages": [{"type": "text", "text": line_msg}],
     }
     try:
         r = requests.post(url, headers=headers, json=payload)

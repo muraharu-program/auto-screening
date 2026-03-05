@@ -538,11 +538,28 @@ def assess_market_regime(nikkei_period: str = "6mo") -> MarketRegime:
     )
 
 
+def format_regime_summary(regime: MarketRegime) -> str:
+    """MarketRegime を LINE 通知用の簡潔サマリーに整形（4行のみ）"""
+    level_emoji = {
+        "STRONG_BUY": "🟢🟢",
+        "BUY":        "🟢",
+        "CAUTION":    "🟡",
+        "DANGER":     "🔴",
+        "CRISIS":     "🔴🔴",
+    }
+    emoji = level_emoji.get(regime.level, "❓")
+    return (
+        f"📊 マーケット地合い判定\n\n"
+        f"{emoji} 地合い: {regime.level}\n"
+        f"総合スコア: {regime.composite_score:+.2f}\n"
+        f"→ {regime.action}"
+    )
+
+
 def format_regime_message(regime: MarketRegime) -> str:
-    """MarketRegime を LINE 通知用テキストに整形"""
+    """MarketRegime を詳細テキストに整形（ファイル保存用）"""
     lines = ["📊 マーケット地合い判定\n"]
 
-    # レベルの絵文字
     level_emoji = {
         "STRONG_BUY": "🟢🟢",
         "BUY":        "🟢",
