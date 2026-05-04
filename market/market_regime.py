@@ -97,7 +97,7 @@ def _build_level_thresholds() -> list:
     """
     レベル判定閾値を構築する。
     MARKET_REGIME_BUY_MIN_SCORE を config から読み、BUY 閾値を動的に設定。
-    デフォルト 0.3 → config で 0.5 に引き上げることで「弱いBUY」をCAUTION扱いにする。
+    デフォルト 0.3 → config で 0.7 に設定することで「弱いBUY」をCAUTION扱いにする。
     """
     buy_min = _load_config_value("MARKET_REGIME_BUY_MIN_SCORE", 0.3)
     return [
