@@ -52,7 +52,7 @@ UP_RATE = 0.05       # 上昇率の閾値（5%）
 # ===== フィルタリング設定 =====
 MIN_VOLUME = 500000  # 最低出来高（直近）
 TOP_N = 6           # 通知する上位銘柄数
-MIN_PROB = 0.5       # 最低上昇確率
+MIN_PROB = 0.62      # 最低上昇確率（50〜60%帯は的中率29%と低いため引き上げ）
 
 # ===== センチメント分析設定 =====
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
@@ -70,6 +70,15 @@ MARKET_REGIME_PERIOD = "6mo"          # 日経平均のデータ取得期間
 # True: 地合い悪化時は「買い推奨なし」とし、注意喚起のみ通知
 # False: 地合い情報を付記するが、スクリーニング結果は通常通り表示
 MARKET_REGIME_BLOCK_BUY = True
+# BUY判定の最低スコア閾値（デフォルト0.3→0.5に引き上げ）
+# 弱いBUY（スコア0.3〜0.5）を CAUTION として扱い、買いをブロックする
+MARKET_REGIME_BUY_MIN_SCORE = 0.5
+
+# ===== ローカルモデル過学習検出設定 =====
+# Local確率がこの値以上 かつ Global確率がこの値未満の場合は過学習を疑い
+# Local重みを無視してGlobal確率のみを使用する
+LOCAL_OVERFIT_MAX_LOCAL = 0.90   # Localが90%超は信頼性を疑う
+LOCAL_OVERFIT_MIN_GLOBAL = 0.50  # Globalが50%未満の場合に過学習フラグを立てる
 
 # ===== LINE Messaging API =====
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")

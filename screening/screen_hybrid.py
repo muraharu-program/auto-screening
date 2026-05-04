@@ -25,6 +25,8 @@ from config import (
     TOP_N,
     MIN_PROB,
     SENTIMENT_TOP_N,
+    LOCAL_OVERFIT_MAX_LOCAL,
+    LOCAL_OVERFIT_MIN_GLOBAL,
 )
 
 
@@ -174,12 +176,26 @@ def screen_hybrid(
         pg = row["prob_global"]
         pl = row["prob_local"]
         if np.isnan(pl):
-            # ローカルモデルなし → グローバルのみ
             return pg
-        # 重み付け平均
+        # 過学習検出: Local確率が非常に高いのにGlobalが低い場合はLocalを信用しない
+        # → Global確率のみを返す（局所モデルのシグナルを無視）
+        if pl >= LOCAL_OVERFIT_MAX_LOCAL and pg < LOCAL_OVERFIT_MIN_GLOBAL:
+            return pg
         return global_weight * pg + local_weight * pl
 
     latest_df["prob_hybrid"] = latest_df.apply(_hybrid_score, axis=1)
+
+    # 過学習フラグを記録（ログ用）
+    def _is_overfit(row):
+        pl = row["prob_local"]
+        pg = row["prob_global"]
+        return (not np.isnan(pl)) and (pl >= LOCAL_OVERFIT_MAX_LOCAL) and (pg < LOCAL_OVERFIT_MIN_GLOBAL)
+
+    overfit_mask = latest_df.apply(_is_overfit, axis=1)
+    overfit_count = overfit_mask.sum()
+    if overfit_count > 0:
+        codes = latest_df.loc[overfit_mask, "code"].tolist()
+        print(f"[過学習検出] {overfit_count} 銘柄でLocal高確率/Global低確率を検出 → Global確率のみ使用: {codes}")
 
     # --- フィルタ ---
     filtered = latest_df[

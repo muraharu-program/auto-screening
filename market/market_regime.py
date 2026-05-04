@@ -87,10 +87,26 @@ class MarketRegime:
 def _load_config_value(name, default):
     """config から動的に読む。未定義ならデフォルト値を返す"""
     try:
-        from config import __dict__ as cfg
-        return cfg.get(name, default)
+        import config as cfg
+        return getattr(cfg, name, default)
     except Exception:
         return default
+
+
+def _build_level_thresholds() -> list:
+    """
+    レベル判定閾値を構築する。
+    MARKET_REGIME_BUY_MIN_SCORE を config から読み、BUY 閾値を動的に設定。
+    デフォルト 0.3 → config で 0.5 に引き上げることで「弱いBUY」をCAUTION扱いにする。
+    """
+    buy_min = _load_config_value("MARKET_REGIME_BUY_MIN_SCORE", 0.3)
+    return [
+        (1.0,           "STRONG_BUY"),
+        (buy_min,       "BUY"),
+        (-0.3,          "CAUTION"),
+        (-1.0,          "DANGER"),
+        (float("-inf"), "CRISIS"),
+    ]
 
 
 # ========================================================================
@@ -412,14 +428,9 @@ _DEFAULT_WEIGHTS = {
 # VIX 系指標の重みはラベルが動的なため特別処理
 _VIX_WEIGHT = 1.5
 
-# レベル判定の閾値
-_LEVEL_THRESHOLDS = [
-    (1.0, "STRONG_BUY"),
-    (0.3, "BUY"),
-    (-0.3, "CAUTION"),
-    (-1.0, "DANGER"),
-    (float("-inf"), "CRISIS"),
-]
+# レベル判定の閾値（_build_level_thresholds() で動的生成）
+# BUY 閾値は config.MARKET_REGIME_BUY_MIN_SCORE に従う（デフォルト 0.5）
+_LEVEL_THRESHOLDS = _build_level_thresholds()
 
 # レベルごとの推奨アクション
 _ACTIONS = {
