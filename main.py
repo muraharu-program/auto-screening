@@ -175,7 +175,7 @@ def main():
     if args.regime_only:
         # regime が None の場合は通知なし
         if regime is not None:
-            send_line_message(pd.DataFrame(), regime=regime)
+            send_line_message(pd.DataFrame(), regime=regime, regime_only=True)
         return
 
     # 判定後、地合いが悪く買いをブロックする設定なら

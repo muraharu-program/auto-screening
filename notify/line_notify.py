@@ -37,7 +37,7 @@ def _save_last_regime(text: str):
     except Exception:
         pass
 
-def format_message(candidates_df, regime=None):
+def format_message(candidates_df, regime=None, regime_only=False):
     """スクリーニング結果を読みやすいメッセージに整形（LINE通知用）
 
     地合い情報は常に簡潔な5段階サマリーのみ表示。
@@ -62,7 +62,7 @@ def format_message(candidates_df, regime=None):
             elif regime.should_reduce:
                 lines.append("⚠ 地合いが悪化しているため、今日の買い推奨銘柄はありません。")
                 lines.append("保有中の銘柄の利確・ポジション縮小を検討してください。")
-        else:
+        elif not regime_only:
             lines.append("本日の有望銘柄はありませんでした。")
         return "\n".join(lines)
 
@@ -118,10 +118,10 @@ def format_message(candidates_df, regime=None):
             )
     return "\n".join(lines)
 
-def _build_file_message(candidates, regime):
+def _build_file_message(candidates, regime, regime_only=False):
     """ファイル保存用メッセージ（LINE通知メッセージ＋地合い詳細を追記）"""
     if isinstance(candidates, pd.DataFrame):
-        msg = format_message(candidates, regime=regime)
+        msg = format_message(candidates, regime=regime, regime_only=regime_only)
     elif isinstance(candidates, str):
         msg = candidates
     else:
@@ -141,7 +141,7 @@ def _build_file_message(candidates, regime):
     return msg
 
 
-def send_line_message(candidates, token=None, user_id=None, regime=None):
+def send_line_message(candidates, token=None, user_id=None, regime=None, regime_only=False):
     """
     LINE Messaging API で Broadcast メッセージを送信（友だち全員に配信）
     candidates: DataFrame or str
@@ -152,7 +152,7 @@ def send_line_message(candidates, token=None, user_id=None, regime=None):
 
     # LINE通知用メッセージ（簡潔版）
     if isinstance(candidates, pd.DataFrame):
-        line_msg = format_message(candidates, regime=regime)
+        line_msg = format_message(candidates, regime=regime, regime_only=regime_only)
     elif isinstance(candidates, str):
         line_msg = candidates
     else:
@@ -162,7 +162,7 @@ def send_line_message(candidates, token=None, user_id=None, regime=None):
     line_msg = line_msg[:5000]
 
     # ファイル保存用メッセージ（詳細版）
-    file_msg = _build_file_message(candidates, regime)
+    file_msg = _build_file_message(candidates, regime, regime_only=regime_only)
 
     # 結果をテキストファイルに保存（LINE送信の有無に関わらず行う）
     try:

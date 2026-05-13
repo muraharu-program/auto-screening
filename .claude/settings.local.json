@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\harut\\\\OneDrive\\\\ドキュメント\\\\株\\\\自動スクリーニングver2\\\\outputs\" | Sort-Object Name | ForEach-Object { $_.Name })"
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\harut\\\\OneDrive\\\\ドキュメント\\\\株\\\\自動スクリーニングver2\\\\outputs\" | Sort-Object Name | ForEach-Object { $_.Name })",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\harut\\\\OneDrive\\\\ドキュメント\\\\株\\\\自動スクリーニングver2\" -Recurse -Force)"
     ]
   }
 }
