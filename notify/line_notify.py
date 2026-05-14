@@ -179,12 +179,12 @@ def send_line_message(candidates, token=None, user_id=None, regime=None, regime_
     prev_regime = _load_last_regime()
     cur_regime = "" if regime is None else regime.summary
 
-    # 通知をスキップすべきか判定
-    if isinstance(candidates, pd.DataFrame) and candidates.empty:
+    # 地合いのみ通知のときだけ、同じ判定の重複送信を抑制する
+    if regime_only and isinstance(candidates, pd.DataFrame) and candidates.empty:
         if prev_regime == cur_regime and cur_regime != "":
             print("前回と地合い判定が同じためLINE通知をスキップします。")
             return None
-    # （候補が存在する場合は常に送信）
+    # 16時のような「地合い＋おすすめ銘柄」通知は、候補が空でも地合いを必ず送る
 
     # 保存するのは地合いサマリーのみ
     if cur_regime:

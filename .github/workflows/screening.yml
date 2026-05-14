@@ -10,6 +10,9 @@ on:
     - cron: '0 7 * * 1-5'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   screening:
     runs-on: ubuntu-latest
@@ -35,14 +38,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # 10時/13時は地合い判定のみ、16時は通常スクリーニング
+      # 10時/13時は地合い判定のみ、16時は地合い＋おすすめ銘柄を通知
       - name: Run regime check or screening
         run: |
           if [ "${{ github.event.schedule }}" = "0 1 * * 1-5" ] || \
              [ "${{ github.event.schedule }}" = "0 4 * * 1-5" ]; then
             python main.py --regime-only
           else
-            python main.py --hybrid --sentiment
+            python main.py --hybrid
           fi
 
       # スクリーニング結果をリポジトリにコミット＆プッシュ
